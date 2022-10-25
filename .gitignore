@@ -13,3 +13,4 @@ htmlcov/**
 
 **/tests/data
 nvjpeg2k_numcodecs/_version.py
+nvjpeg2k_numcodecs/_nvjpeg2k.cpp
