@@ -1,0 +1,15 @@
+__pycache__
+.hypothesis
+.coverage*
+.eggs/**
+.mypy_cache
+.pytest_cache
+.tox
+build/**
+dist/**
+docs/build/**
+htmlcov/**
+*.egg-info/**
+
+**/tests/data
+nvjpeg2k_numcodecs/_version.py
