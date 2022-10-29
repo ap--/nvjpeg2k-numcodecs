@@ -7,7 +7,7 @@ setup(
     ext_modules=cythonize(
         Extension(
             "nvjpeg2k_numcodecs._nvjpeg2k",
-            sources=["nvjpeg2k_numcodecs/*.pyx"],
+            sources=["nvjpeg2k_numcodecs/_nvjpeg2k.pyx"],
             libraries=['cudart'],
             extra_objects=[
                 "./vendor/nvjpeg2k/lib/libnvjpeg2k_static.a",

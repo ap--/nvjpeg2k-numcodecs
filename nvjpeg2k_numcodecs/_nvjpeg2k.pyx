@@ -1,5 +1,4 @@
 # distutils: language = c++
-# distutils: include_dirs = vendor/nvjpeg2k/include
 
 from libcpp.vector cimport vector
 from nvjpeg2k_numcodecs cimport _nvjpeg2k as nvjpeg2k
