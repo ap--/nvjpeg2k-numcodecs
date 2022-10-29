@@ -1,9 +1,21 @@
 # distutils: language = c++
+# distutils: include_dirs = vendor/nvjpeg2k/include
 
 from libcpp.vector cimport vector
 from nvjpeg2k_numcodecs cimport _nvjpeg2k as nvjpeg2k
 
-_status_error_msg = {}
+_status_error_msg = {
+    nvjpeg2k.NVJPEG2K_STATUS_SUCCESS: "SUCCESS",
+    nvjpeg2k.NVJPEG2K_STATUS_NOT_INITIALIZED: "NOT_INITIALIZED",
+    nvjpeg2k.NVJPEG2K_STATUS_INVALID_PARAMETER: "INVALID_PARAMETER",
+    nvjpeg2k.NVJPEG2K_STATUS_BAD_JPEG: "BAD_JPEG",
+    nvjpeg2k.NVJPEG2K_STATUS_JPEG_NOT_SUPPORTED: "JPEG_NOT_SUPPORTED",
+    nvjpeg2k.NVJPEG2K_STATUS_ALLOCATOR_FAILURE: "ALLOCATOR_FAILURE",
+    nvjpeg2k.NVJPEG2K_STATUS_EXECUTION_FAILED: "EXECUTION_FAILED",
+    nvjpeg2k.NVJPEG2K_STATUS_ARCH_MISMATCH: "ARCH_MISMATCH",
+    nvjpeg2k.NVJPEG2K_STATUS_INTERNAL_ERROR: "INTERNAL_ERROR",
+    nvjpeg2k.NVJPEG2K_STATUS_IMPLEMENTATION_NOT_SUPPORTED: "IMPLEMENTATION_NOT_SUPPORTED",
+}
 _cuda_error_msg = {}
 
 
