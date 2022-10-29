@@ -10,7 +10,13 @@ dist/**
 docs/build/**
 htmlcov/**
 *.egg-info/**
+.idea
 
 **/tests/data
 nvjpeg2k_numcodecs/_version.py
 nvjpeg2k_numcodecs/_nvjpeg2k.cpp
+nvjpeg2k_numcodecs/_nvjpeg2k*.so
+
+vendor/nvjpeg2k
+vendor/libnvjpeg_2k*.tar.xz
+
