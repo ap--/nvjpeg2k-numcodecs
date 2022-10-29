@@ -1,8 +1,7 @@
 # distutils: language = c++
 
 from libcpp.vector cimport vector
-
-cimport nvjpeg2k_numcodecs._nvjpeg2k as nvjpeg2k
+from nvjpeg2k_numcodecs cimport _nvjpeg2k as nvjpeg2k
 
 _status_error_msg = {}
 _cuda_error_msg = {}
@@ -21,13 +20,13 @@ cdef int host_free(void *p):
     return <int>cudaFreeHost(p)
 
 
-cdef inline raise_if_nvjpeg2k_error(status):
+cdef inline raise_if_nvjpeg2k_error(status: nvjpeg2k.nvjpeg2kStatus_t):
     if status != nvjpeg2k.NVJPEG2K_STATUS_SUCCESS:
         msg = _status_error_msg[status]
         raise RuntimeError(f"nvJPEG2000 status error: {msg!r}")
 
 
-cdef inline raise_if_cuda_error(cuda_error):
+cdef inline raise_if_cuda_error(cuda_error: nvjpeg2k.cudaError_t):
     if cuda_error != 0:
         msg = _cuda_error_msg[cuda_error]
         raise RuntimeError(f"nvJPEG2000 cuda error: {msg!r}")
@@ -121,7 +120,7 @@ def nvjpeg2k_decode(
     length = len(buf)
 
     if ctx is None:
-        ctx = create_context()
+        ctx = nvjpeg2k_create_context()
 
     cuda_error = cudaStreamSynchronize(ctx.stream)
     raise_if_cuda_error(cuda_error)
