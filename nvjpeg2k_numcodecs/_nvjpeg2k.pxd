@@ -141,7 +141,7 @@ cdef extern from "nvjpeg2k.h":
         nvjpeg2kPinnedMalloc pinned_malloc
         nvjpeg2kPinnedFree   pinned_free
 
-    cdef enum nvjpeg2kStatus:
+    ctypedef enum nvjpeg2kStatus_t:
         NVJPEG2K_STATUS_SUCCESS = 0
         NVJPEG2K_STATUS_NOT_INITIALIZED = 1
         NVJPEG2K_STATUS_INVALID_PARAMETER = 2
@@ -153,19 +153,15 @@ cdef extern from "nvjpeg2k.h":
         NVJPEG2K_STATUS_INTERNAL_ERROR = 8
         NVJPEG2K_STATUS_IMPLEMENTATION_NOT_SUPPORTED = 9
 
-    ctypedef nvjpeg2kStatus nvjpeg2kStatus_t
-
-    cdef enum nvjpeg2kBackend:
+    ctypedef enum nvjpeg2kBackend_t:
         NVJPEG2K_BACKEND_DEFAULT = 0
-    ctypedef nvjpeg2kBackend nvjpeg2kBackend_t
 
-    cdef enum nvjpeg2kColorSpace:
+    ctypedef enum nvjpeg2kColorSpace_t:
         NVJPEG2K_COLORSPACE_NOT_SUPPORTED = -1
         NVJPEG2K_COLORSPACE_UNKNOWN       = 0
         NVJPEG2K_COLORSPACE_SRGB          = 1
         NVJPEG2K_COLORSPACE_GRAY          = 2
         NVJPEG2K_COLORSPACE_SYCC          = 3
-    ctypedef nvjpeg2kColorSpace nvjpeg2kColorSpace_t
 
     ctypedef struct nvjpeg2kImageComponentInfo_t:
         uint32_t component_width
@@ -182,10 +178,9 @@ cdef extern from "nvjpeg2k.h":
         uint32_t num_tiles_y  # no of tiles in vertical direction
         uint32_t num_components
 
-    cdef enum nvjpeg2kImageType:
+    ctypedef enum nvjpeg2kImageType_t:
         NVJPEG2K_UINT8 = 0
         NVJPEG2K_UINT16 = 1
-    ctypedef nvjpeg2kImageType nvjpeg2kImageType_t
 
     ctypedef struct nvjpeg2kImage_t:
         void **pixel_data
@@ -195,14 +190,14 @@ cdef extern from "nvjpeg2k.h":
 
     DEF NVJPEG2K_MAXRES = 33
 
-    cdef enum nvjpeg2kProgOrder:
+    ctypedef enum nvjpeg2kProgOrder:
         NVJPEG2K_LRCP = 0
         NVJPEG2K_RLCP = 1
         NVJPEG2K_RPCL = 2
         NVJPEG2K_PCRL = 3
         NVJPEG2K_CPRL = 4
 
-    cdef enum nvjpeg2kBitstreamType:
+    ctypedef enum nvjpeg2kBitstreamType:
         NVJPEG2K_STREAM_J2K = 0
         NVJPEG2K_STREAM_JP2 = 1
 
