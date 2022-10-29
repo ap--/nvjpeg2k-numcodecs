@@ -1,6 +1,7 @@
 # distutils: language = c++
 
 from libcpp.vector cimport vector
+
 from nvjpeg2k_numcodecs cimport _nvjpeg2k as nvjpeg2k
 
 _status_error_msg = {

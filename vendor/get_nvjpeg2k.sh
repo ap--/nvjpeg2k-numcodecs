@@ -6,4 +6,3 @@ curl -o ${NVJPEG2K_ARCHIVE} https://developer.download.nvidia.com/compute/libnvj
 
 mkdir nvjpeg2k
 tar xvf ${NVJPEG2K_ARCHIVE} -C nvjpeg2k --strip-components 1
-
