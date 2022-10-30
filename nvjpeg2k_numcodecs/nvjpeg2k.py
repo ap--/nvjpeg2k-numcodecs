@@ -3,9 +3,8 @@ from typing import Union
 
 from numcodecs.abc import Codec
 
-from nvjpeg2k_numcodecs._nvjpeg2k import nvjpeg2k_create_context
+from nvjpeg2k_numcodecs._nvjpeg2k import NvJpeg2kContext
 from nvjpeg2k_numcodecs._nvjpeg2k import nvjpeg2k_decode
-from nvjpeg2k_numcodecs._nvjpeg2k import nvjpeg2k_destroy_context
 
 # waiting for: https://peps.python.org/pep-0688/
 BufferLike = Union[bytes, bytearray, memoryview]
@@ -17,12 +16,7 @@ class NvJpeg2k(Codec):
     codec_id = "nvjpeg2k"
 
     def __init__(self) -> None:
-        self._ctx = nvjpeg2k_create_context()
-
-    def __del__(self) -> None:
-        if self._ctx is not None:
-            nvjpeg2k_destroy_context(self._ctx)
-            self._ctx = None
+        self._ctx = NvJpeg2kContext()
 
     def encode(self, buf: BufferLike) -> None:
         """Encode data in `buf`.

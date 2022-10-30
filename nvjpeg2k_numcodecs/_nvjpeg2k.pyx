@@ -1,8 +1,14 @@
 # distutils: language = c++
 
+import numpy
+
+cimport numpy
 from libcpp.vector cimport vector
 
 from nvjpeg2k_numcodecs cimport _nvjpeg2k as nvjpeg2k
+
+numpy.import_array()
+
 
 _status_error_msg = {
     nvjpeg2k.NVJPEG2K_STATUS_SUCCESS: "SUCCESS",
@@ -52,7 +58,7 @@ cdef int cudaEventBlockingSync = 0x01  # Event uses blocking synchronization
 cdef int cudaEventDisableTiming = 0x02  # Event will not record timing data
 cdef int cudaEventInterprocess = 0x04  # Event is suitable for interprocess use. cudaEventDisableTiming must be set
 
-cdef class _NvJpeg2kContext:
+cdef class NvJpeg2kContext:
 
     cdef nvjpeg2kHandle_t handle
     cdef nvjpeg2kDecodeState_t decode_state
@@ -92,33 +98,32 @@ cdef class _NvJpeg2kContext:
         cuda_error = cudaStreamCreateWithFlags(&self.stream, cudaStreamNonBlocking)
         raise_if_cuda_error(cuda_error)
 
-def nvjpeg2k_create_context() -> _NvJpeg2kContext:
-    return _NvJpeg2kContext()
+    def __dealloc__(self):
+        cdef nvjpeg2kStatus_t status
+        cdef cudaError_t cuda_error
 
-def nvjpeg2k_destroy_context(
-    ctx: _NvJpeg2kContext
-) -> None:
-    cdef nvjpeg2kStatus_t status
-    cdef cudaError_t cuda_error
+        if self.stream != NULL:
+            cuda_error = cudaStreamDestroy(self.stream)
+            raise_if_cuda_error(cuda_error)
 
-    cuda_error = cudaStreamDestroy(ctx.stream)
-    raise_if_cuda_error(cuda_error)
+        if self.jpeg2k_stream != NULL:
+            status = nvjpeg2kStreamDestroy(self.jpeg2k_stream)
+            raise_if_nvjpeg2k_error(status)
 
-    status = nvjpeg2kStreamDestroy(ctx.jpeg2k_stream)
-    raise_if_nvjpeg2k_error(status)
+        if self.decode_state != NULL:
+            status = nvjpeg2kDecodeStateDestroy(self.decode_state)
+            raise_if_nvjpeg2k_error(status)
 
-    status = nvjpeg2kDecodeStateDestroy(ctx.decode_state)
-    raise_if_nvjpeg2k_error(status)
-
-    status = nvjpeg2kDestroy(ctx.handle)
-    raise_if_nvjpeg2k_error(status)
+        if self.handle != NULL:
+            status = nvjpeg2kDestroy(self.handle)
+            raise_if_nvjpeg2k_error(status)
 
 
 def nvjpeg2k_decode(
     buf,
     out=None,
     rgb_output: int = 0,
-    ctx: _NvJpeg2kContext = None,
+    ctx: NvJpeg2kContext = None,
 ):
     cdef nvjpeg2kStatus_t status
     cdef cudaError_t cuda_error
@@ -128,11 +133,14 @@ def nvjpeg2k_decode(
     cdef unsigned char* buffer
     cdef size_t length
 
+    if buf is out:
+        raise ValueError('cannot decode in-place')
+
     buffer = buf
     length = len(buf)
 
     if ctx is None:
-        ctx = nvjpeg2k_create_context()
+        ctx = NvJpeg2kContext()
 
     cuda_error = cudaStreamSynchronize(ctx.stream)
     raise_if_cuda_error(cuda_error)
@@ -185,6 +193,7 @@ def nvjpeg2k_decode(
 
     decode_output_pitch.resize(image_info.num_components)
     output_image.pitch_in_bytes = decode_output_pitch.data()
+    output_image.num_components = image_info.num_components
 
     if 8 < image_comp_info[0].precision <= 16:
         decode_output_u16.resize(image_info.num_components)
@@ -202,24 +211,62 @@ def nvjpeg2k_decode(
         raise RuntimeError(f"nvJPEG2000 precision not supported: '{image_comp_info[0].precision!r}'")
 
 
-    """
-        if(allocate_output_buffers(output_image, image_info, image_comp_info, bytes_per_element, params.rgb_output))
-        {
-            return EXIT_FAILURE;
-        }
-        CHECK_CUDA(cudaEventRecord(startEvent, params.stream));
+    if rgb_output:
+        for c in range(image_info.num_components):
+            cuda_error = cudaMallocPitch(
+                &output_image.pixel_data[c],
+                &output_image.pitch_in_bytes[c],
+                image_info.image_width * bytes_per_element,
+                image_info.image_height,
+            )
+            raise_if_cuda_error(cuda_error)
 
-        CHECK_NVJPEG2K(nvjpeg2kDecodeImage(params.nvjpeg2k_handle, params.nvjpeg2k_decode_state,
-            params.jpeg2k_stream, decode_params, &output_image, params.stream));
+    else:
+        for c in range(image_info.num_components):
+            cuda_error = cudaMallocPitch(
+                &output_image.pixel_data[c],
+                &output_image.pitch_in_bytes[c],
+                image_comp_info[c].component_width * bytes_per_element,
+                image_comp_info[c].component_height,
+            )
+            raise_if_cuda_error(cuda_error)
 
-        CHECK_CUDA(cudaEventRecord(stopEvent, params.stream));
+    cuda_error = cudaEventRecord(startEvent, ctx.stream)
+    raise_if_cuda_error(cuda_error)
 
-        CHECK_CUDA(cudaEventSynchronize(stopEvent));
-        CHECK_CUDA(cudaEventElapsedTime(&loopTime, startEvent, stopEvent));
-        time += static_cast<double>(loopTime/1000.0); // loopTime is in milliseconds
-        time += parse_time;
+    # decode the image
+    status = nvjpeg2kDecodeImage(
+        ctx.handle,
+        ctx.decode_state,
+        ctx.jpeg2k_stream,
+        decode_params,
+        &output_image,
+        ctx.stream,
+    )
 
-    """
+    cuda_error = cudaEventRecord(stopEvent, ctx.stream)
+    raise_if_cuda_error(cuda_error)
+
+    cuda_error = cudaEventSynchronize(stopEvent)
+    raise_if_cuda_error(cuda_error)
+
+    cdef float loop_time = 0
+    cuda_error = cudaEventElapsedTime(&loop_time, startEvent, stopEvent)
+
+    # generate output array
+    shape = (image_info.image_height, image_info.image_width, 3)
+    dtype = f"u{bytes_per_element}"
+    if out is None:
+        out = numpy.empty(shape, dtype=dtype)
+    elif isinstance(out, numpy.ndarray):
+        if out.shape != shape:
+            raise ValueError()
+    else:
+        count = 1
+        for s in shape:
+            count *= s
+        out = numpy.frombuffer(out, dtype=dtype, count=count)
+        out.shape = shape
 
     status = nvjpeg2kDecodeParamsDestroy(decode_params)
     raise_if_nvjpeg2k_error(status)
@@ -227,3 +274,5 @@ def nvjpeg2k_decode(
     raise_if_cuda_error(cuda_error)
     cuda_error = cudaEventDestroy(stopEvent)
     raise_if_cuda_error(cuda_error)
+
+    return out

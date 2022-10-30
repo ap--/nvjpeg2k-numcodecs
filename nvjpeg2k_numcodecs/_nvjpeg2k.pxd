@@ -111,6 +111,7 @@ cdef extern from "cuda_runtime_api.h":
     cdef cudaError_t cudaFree(void *devPtr)
     cdef cudaError_t cudaHostAlloc(void **pHost, size_t size, unsigned int flags)
     cdef cudaError_t cudaFreeHost(void *ptr)
+    cdef cudaError_t cudaMallocPitch(void **devPtr, size_t *pitch, size_t width, size_t height)
 
     cdef cudaError_t cudaStreamCreateWithFlags(cudaStream_t *pStream, unsigned int flags)
     cdef cudaError_t cudaStreamDestroy(cudaStream_t stream)
@@ -118,6 +119,9 @@ cdef extern from "cuda_runtime_api.h":
 
     cdef cudaError_t cudaEventCreateWithFlags(cudaEvent_t *event, unsigned int flags)
     cdef cudaError_t cudaEventDestroy(cudaEvent_t event)
+    cdef cudaError_t cudaEventRecord(cudaEvent_t event, cudaStream_t stream)
+    cdef cudaError_t cudaEventElapsedTime(float *ms, cudaEvent_t start, cudaEvent_t end)
+    cdef cudaError_t cudaEventSynchronize(cudaEvent_t event)
 
 
 cdef extern from "nvjpeg2k.h":
