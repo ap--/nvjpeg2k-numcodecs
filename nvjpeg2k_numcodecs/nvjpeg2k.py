@@ -1,6 +1,8 @@
 from typing import Optional
 from typing import Union
 
+import cupy as cp
+import numpy as np
 from numcodecs.abc import Codec
 
 from nvjpeg2k_numcodecs._nvjpeg2k import NvJpeg2kContext
@@ -65,7 +67,11 @@ def _flat(out: Optional[BufferLike]) -> Optional[BufferLike]:
     """Return numpy array as contiguous view of bytes if possible."""
     if out is None:
         return None
-    view = memoryview(out)
-    if view.readonly or not view.contiguous:
-        return None
-    return view.cast("B")
+    elif isinstance(out, (np.ndarray, cp.ndarray)):
+        return out
+    else:
+        raise NotImplementedError("todo")
+    # view = memoryview(out)
+    # if view.readonly or not view.contiguous:
+    #     return None
+    # return view.cast("B")
