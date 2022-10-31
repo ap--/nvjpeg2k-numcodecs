@@ -1,7 +1,10 @@
 # distutils: language = c++
+
 import cupy
 from cupy.cuda import Stream
 from cupy.cuda.memory import Memory
+from cupy.cuda.memory import MemoryPointer
+from cupy.cuda.runtime import streamSynchronize
 
 from libc.stdint cimport intptr_t
 from libcpp.vector cimport vector
@@ -36,16 +39,17 @@ cdef int host_free(void *p):
     return <int>cudaFreeHost(p)
 
 
-cdef inline raise_if_nvjpeg2k_error(status: nvjpeg2k.nvjpeg2kStatus_t):
+cdef raise_if_nvjpeg2k_error(status: nvjpeg2k.nvjpeg2kStatus_t, name: str = " "):
     if status != nvjpeg2k.NVJPEG2K_STATUS_SUCCESS:
         msg = _status_error_msg[status]
-        raise RuntimeError(f"nvJPEG2000 status error: {msg!r}")
+        raise RuntimeError(f"nvJPEG2000 status error:{name}{msg!r}")
 
 
-cdef inline raise_if_cuda_error(cuda_error: nvjpeg2k.cudaError_t):
+cdef raise_if_cuda_error(cuda_error: nvjpeg2k.cudaError_t, name: str = " "):
     if cuda_error != 0:
-        msg = _cuda_error_msg[cuda_error]
-        raise RuntimeError(f"nvJPEG2000 cuda error: {msg!r}")
+        # msg = _cuda_error_msg[cuda_error]
+        msg = int(cuda_error)
+        raise RuntimeError(f"nvJPEG2000 cuda error:{name}{msg!r}")
 
 
 cdef int cudaStreamDefault = 0x00  # Default stream flag
@@ -55,6 +59,7 @@ cdef int cudaEventDefault = 0x00  # Default event flag
 cdef int cudaEventBlockingSync = 0x01  # Event uses blocking synchronization
 cdef int cudaEventDisableTiming = 0x02  # Event will not record timing data
 cdef int cudaEventInterprocess = 0x04  # Event is suitable for interprocess use. cudaEventDisableTiming must be set
+
 
 cdef class NvJpeg2kContext:
 
@@ -90,12 +95,6 @@ cdef class NvJpeg2kContext:
         status = nvjpeg2kStreamCreate(&self.jpeg2k_stream)
         raise_if_nvjpeg2k_error(status)
 
-        # stream for decoding
-        self._stream = Stream(non_blocking=True)
-
-    cdef cudaStream_t get_cuda_stream(self):
-        return <cudaStream_t> self._stream.ptr
-
     def __dealloc__(self):
         cdef nvjpeg2kStatus_t status
 
@@ -117,11 +116,11 @@ def nvjpeg2k_decode(
     out=None,
     rgb_output: int = 0,
     ctx: NvJpeg2kContext = None,
+    stream: Stream = None,
 ):
     cdef nvjpeg2kStatus_t status
     cdef cudaError_t cuda_error
-    cdef cudaEvent_t startEvent = NULL
-    cdef cudaEvent_t stopEvent = NULL
+    cdef cudaStream_t cuda_stream
 
     cdef unsigned char* buffer
     cdef size_t length
@@ -135,12 +134,8 @@ def nvjpeg2k_decode(
     cdef size_t size_component_bytes
     cdef size_t size_image_bytes
     cdef vector[nvjpeg2kImageComponentInfo_t] image_comp_info
-    # cdef vector[unsigned short*] decode_output_u16
-    # cdef vector[unsigned char*] decode_output_u8
     cdef vector[void *] decode_output_pixel_data
     cdef vector[size_t] decode_output_pitch
-
-    cdef float loop_time = 0
 
     if buf is out:
         raise ValueError("cannot decode in-place")
@@ -151,22 +146,17 @@ def nvjpeg2k_decode(
     if ctx is None:
         ctx = NvJpeg2kContext()
 
-    cuda_error = cudaStreamSynchronize(ctx.get_cuda_stream())
-    raise_if_cuda_error(cuda_error)
+    if stream is None:
+        stream = Stream(non_blocking=True)
+    cuda_stream = <cudaStream_t> <intptr_t> stream.ptr
+
+    # streamSynchronize(stream.ptr)
+    cudaStreamSynchronize(cuda_stream)
 
     try:
-
-        cuda_error = cudaEventCreateWithFlags(&startEvent, cudaEventBlockingSync)
-        raise_if_cuda_error(cuda_error)
-
-        cuda_error = cudaEventCreateWithFlags(&stopEvent, cudaEventBlockingSync)
-        raise_if_cuda_error(cuda_error)
-
         status = nvjpeg2kDecodeParamsCreate(&decode_params)
         raise_if_nvjpeg2k_error(status)
 
-        # >>> if (NVJPEG2K_VER_MAJOR == 0 && NVJPEG2K_VER_MINOR >= 3)
-        # >>>    420 and 422 subsampling are enabled in nvJPEG2k v 0.3.0
         status = nvjpeg2kDecodeParamsSetRGBOutput(decode_params, rgb_output)
         raise_if_nvjpeg2k_error(status)
 
@@ -199,33 +189,34 @@ def nvjpeg2k_decode(
         output_image.num_components = image_info.num_components
 
         if 8 < image_comp_info[0].precision <= 16:
-            # decode_output_u16.resize(image_info.num_components)
-            # output_image.pixel_data = <void **>decode_output_u16.data()
             output_image.pixel_type = NVJPEG2K_UINT16
             bytes_per_element = 2
 
         elif image_comp_info[0].precision == 8:
-            # decode_output_u8.resize(image_info.num_components)
-            # output_image.pixel_data = <void **>decode_output_u8.data()
             output_image.pixel_type = NVJPEG2K_UINT8
             bytes_per_element = 1
 
         else:
             raise RuntimeError(f"nvJPEG2000 precision not supported: '{image_comp_info[0].precision!r}'")
 
-
         # if rgb_output:
         size_component_bytes = image_info.image_height * image_info.image_width * bytes_per_element
         size_image_bytes = size_component_bytes * image_info.num_components
 
+        # shapes
+        shape = (image_info.num_components, image_info.image_height, image_info.image_width)
+        dtype = f"u{bytes_per_element}"
+
         cupy_mem = Memory(size_image_bytes)
+        cupy_mem_ptr = MemoryPointer(cupy_mem, 0)
+        out = cupy.ndarray(shape, dtype=dtype, memptr=cupy_mem_ptr, order="C")
 
         decode_output_pitch.resize(image_info.num_components)
         output_image.pitch_in_bytes = decode_output_pitch.data()
         output_image.num_components = image_info.num_components
 
         for c in range(image_info.num_components):
-            output_image.pixel_data[c] = <void *> (<intptr_t>cupy_mem.ptr + <ptrdiff_t>(c * size_component_bytes))
+            output_image.pixel_data[c] = <void *> <intptr_t> out[c, :, :].data.ptr
             output_image.pitch_in_bytes[c] = image_info.image_width * bytes_per_element
             #cuda_error = cudaMallocPitch(
             #    &output_image.pixel_data[c],
@@ -245,8 +236,8 @@ def nvjpeg2k_decode(
         #       )
         #       raise_if_cuda_error(cuda_error)
 
-        cuda_error = cudaEventRecord(startEvent, ctx.get_cuda_stream())
-        raise_if_cuda_error(cuda_error)
+        # cuda_error = cudaEventRecord(startEvent, cuda_stream)
+        # raise_if_cuda_error(cuda_error)
 
         # decode the image
         status = nvjpeg2kDecodeImage(
@@ -255,16 +246,17 @@ def nvjpeg2k_decode(
             ctx.jpeg2k_stream,
             decode_params,
             &output_image,
-            ctx.get_cuda_stream(),
+            cuda_stream,
         )
+        raise_if_nvjpeg2k_error(status, "decodeImage")
 
-        cuda_error = cudaEventRecord(stopEvent, ctx.get_cuda_stream())
-        raise_if_cuda_error(cuda_error)
+        # cuda_error = cudaEventRecord(stopEvent, cuda_stream)
+        # raise_if_cuda_error(cuda_error)
 
-        cuda_error = cudaEventSynchronize(stopEvent)
-        raise_if_cuda_error(cuda_error)
+        # cuda_error = cudaEventSynchronize(stopEvent)
+        # raise_if_cuda_error(cuda_error)
 
-        cuda_error = cudaEventElapsedTime(&loop_time, startEvent, stopEvent)
+        # cuda_error = cudaEventElapsedTime(&loop_time, startEvent, stopEvent)
 
         # >>> generate output array
         # shape = (image_info.image_height, image_info.image_width, image_info.num_components)
@@ -281,29 +273,10 @@ def nvjpeg2k_decode(
         #     out = numpy.frombuffer(out, dtype=dtype, count=count)
         #     out.shape = shape
 
-        shape = (image_info.num_components, image_info.image_height, image_info.image_width)
-        dtype = f"u{bytes_per_element}"
-        return cupy.ndarray(shape, dtype=dtype, memptr=cupy_mem.ptr)
-
     finally:
-        exceptions = []
         if decode_params != NULL:
             status = nvjpeg2kDecodeParamsDestroy(decode_params)
-            try:
-                raise_if_nvjpeg2k_error(status)
-            except RuntimeError as err:
-                exceptions.append(err)
-        if stopEvent != NULL:
-            cuda_error = cudaEventDestroy(stopEvent)
-            try:
-                raise_if_cuda_error(cuda_error)
-            except RuntimeError as err:
-                exceptions.append(err)
-        if startEvent != NULL:
-            cuda_error = cudaEventDestroy(startEvent)
-            try:
-                raise_if_cuda_error(cuda_error)
-            except RuntimeError as err:
-                exceptions.append(err)
-        if exceptions:
-            raise RuntimeError(exceptions)
+            raise_if_nvjpeg2k_error(status, "paramsDestroy")
+    
+    return out
+
