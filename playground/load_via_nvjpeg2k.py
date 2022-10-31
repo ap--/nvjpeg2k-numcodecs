@@ -16,9 +16,6 @@ IMAGE = pathlib.Path("CMU-1-JP2K-33005.svs").absolute()
 ts = tiffslide.open_slide(IMAGE)
 kc = to_kerchunk(ts, urlpath=IMAGE)
 
-old_zarray = kc["refs"]["s0/0/.zarray"]
-z = json.loads(old_zarray)
-
 if sys.argv[1] == "cpu":
     meta_array = None
     pass
@@ -28,16 +25,31 @@ elif sys.argv[1] == "gpu":
 
     from nvjpeg2k_numcodecs import NvJpeg2k
 
+    old_zarray = kc["refs"]["s0/0/.zarray"]
+    z = json.loads(old_zarray)
+
     numcodecs.register_codec(NvJpeg2k)
-    z["compressor"] = {"id": "nvjpeg2k"}
+    z["compressor"] = {"id": "nvjpeg2k", "blocking": True}
     z["chunks"] = [3, 240, 240]
     z["shape"] = [z["shape"][2], *z["shape"][:2]]
 
     meta_array = cupy.empty(())
+
+    refs = kc["refs"]
+    keys = [k for k in refs if k.startswith("s0/0")]
+    for key in keys:
+        prefix, idxs = key.rsplit("/", maxsplit=1)
+        if idxs in {".zarray", ".zgroup", ".zattrs"}:
+            continue
+        iy, ix, iz = idxs.split(".")
+        new_key = f"{prefix}/{iz}.{iy}.{ix}"
+        refs[new_key] = refs.pop(key)
+        print(key, "-->", new_key)
+
+    kc["refs"]["s0/0/.zarray"] = json.dumps(z)
 else:
     raise ValueError("argv[1] not in {'cpu', 'gpu'}")
 
-kc["refs"]["s0/0/.zarray"] = json.dumps(z)
 
 fs: ReferenceFileSystem = fsspec.filesystem(
     "reference",
