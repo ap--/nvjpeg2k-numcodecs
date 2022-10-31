@@ -1,10 +1,7 @@
 # distutils: language = c++
 
 import cupy
-from cupy.cuda import Stream
-from cupy.cuda.memory import Memory
-from cupy.cuda.memory import MemoryPointer
-from cupy.cuda.runtime import streamSynchronize
+from cupy.cuda.stream import Stream
 
 from libc.stdint cimport intptr_t
 from libcpp.vector cimport vector
@@ -63,9 +60,9 @@ cdef int cudaEventInterprocess = 0x04  # Event is suitable for interprocess use.
 
 cdef class NvJpeg2kContext:
 
-    cdef nvjpeg2kHandle_t handle
-    cdef nvjpeg2kDecodeState_t decode_state
-    cdef nvjpeg2kStream_t jpeg2k_stream
+    cdef nvjpeg2kHandle_t handle = NULL
+    cdef nvjpeg2kDecodeState_t decode_state = NULL
+    cdef nvjpeg2kStream_t jpeg2k_stream = NULL
 
     def __init__(self):
         # device and host allocators
@@ -119,7 +116,6 @@ def nvjpeg2k_decode(
     stream: Stream = None,
 ):
     cdef nvjpeg2kStatus_t status
-    cdef cudaError_t cuda_error
     cdef cudaStream_t cuda_stream
 
     cdef unsigned char* buffer
@@ -131,8 +127,6 @@ def nvjpeg2k_decode(
     cdef nvjpeg2kImage_t output_image
     cdef nvjpeg2kImageInfo_t image_info
 
-    cdef size_t size_component_bytes
-    cdef size_t size_image_bytes
     cdef vector[nvjpeg2kImageComponentInfo_t] image_comp_info
     cdef vector[void *] decode_output_pixel_data
     cdef vector[size_t] decode_output_pitch
@@ -150,7 +144,6 @@ def nvjpeg2k_decode(
         stream = Stream(non_blocking=True)
     cuda_stream = <cudaStream_t> <intptr_t> stream.ptr
 
-    # streamSynchronize(stream.ptr)
     cudaStreamSynchronize(cuda_stream)
 
     try:
@@ -199,17 +192,18 @@ def nvjpeg2k_decode(
         else:
             raise RuntimeError(f"nvJPEG2000 precision not supported: '{image_comp_info[0].precision!r}'")
 
-        # if rgb_output:
-        size_component_bytes = image_info.image_height * image_info.image_width * bytes_per_element
-        size_image_bytes = size_component_bytes * image_info.num_components
-
         # shapes
         shape = (image_info.num_components, image_info.image_height, image_info.image_width)
         dtype = f"u{bytes_per_element}"
 
-        cupy_mem = Memory(size_image_bytes)
-        cupy_mem_ptr = MemoryPointer(cupy_mem, 0)
-        out = cupy.ndarray(shape, dtype=dtype, memptr=cupy_mem_ptr, order="C")
+        # >>> generate output array
+        if out is None:
+            out = cupy.empty(shape, dtype=dtype, order="C")
+        elif isinstance(out, cupy.ndarray):
+            if out.shape != shape:
+                raise ValueError("out has incorrect shape")
+        else:
+            raise NotImplementedError("todo: not implemented yet...")
 
         decode_output_pitch.resize(image_info.num_components)
         output_image.pitch_in_bytes = decode_output_pitch.data()
@@ -218,26 +212,6 @@ def nvjpeg2k_decode(
         for c in range(image_info.num_components):
             output_image.pixel_data[c] = <void *> <intptr_t> out[c, :, :].data.ptr
             output_image.pitch_in_bytes[c] = image_info.image_width * bytes_per_element
-            #cuda_error = cudaMallocPitch(
-            #    &output_image.pixel_data[c],
-            #    &output_image.pitch_in_bytes[c],
-            #    image_info.image_width * bytes_per_element,
-            #    image_info.image_height,
-            #)
-            #raise_if_cuda_error(cuda_error)
-
-        # else:
-        #   for c in range(image_info.num_components):
-        #       cuda_error = cudaMallocPitch(
-        #           &output_image.pixel_data[c],
-        #           &output_image.pitch_in_bytes[c],
-        #           image_comp_info[c].component_width * bytes_per_element,
-        #           image_comp_info[c].component_height,
-        #       )
-        #       raise_if_cuda_error(cuda_error)
-
-        # cuda_error = cudaEventRecord(startEvent, cuda_stream)
-        # raise_if_cuda_error(cuda_error)
 
         # decode the image
         status = nvjpeg2kDecodeImage(
@@ -250,33 +224,9 @@ def nvjpeg2k_decode(
         )
         raise_if_nvjpeg2k_error(status, "decodeImage")
 
-        # cuda_error = cudaEventRecord(stopEvent, cuda_stream)
-        # raise_if_cuda_error(cuda_error)
-
-        # cuda_error = cudaEventSynchronize(stopEvent)
-        # raise_if_cuda_error(cuda_error)
-
-        # cuda_error = cudaEventElapsedTime(&loop_time, startEvent, stopEvent)
-
-        # >>> generate output array
-        # shape = (image_info.image_height, image_info.image_width, image_info.num_components)
-        # dtype = f"u{bytes_per_element}"
-        # if out is None:
-        #     out = numpy.empty(shape, dtype=dtype)
-        # elif isinstance(out, numpy.ndarray):
-        #     if out.shape != shape:
-        #         raise ValueError()
-        # else:
-        #     count = 1
-        #     for s in shape:
-        #         count *= s
-        #     out = numpy.frombuffer(out, dtype=dtype, count=count)
-        #     out.shape = shape
-
     finally:
         if decode_params != NULL:
             status = nvjpeg2kDecodeParamsDestroy(decode_params)
             raise_if_nvjpeg2k_error(status, "paramsDestroy")
-    
-    return out
 
+    return out
