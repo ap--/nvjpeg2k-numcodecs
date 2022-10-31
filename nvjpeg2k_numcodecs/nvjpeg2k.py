@@ -1,6 +1,7 @@
 from typing import Optional
 from typing import Union
 
+from cupy.cuda.stream import Stream
 from numcodecs.abc import Codec
 
 from nvjpeg2k_numcodecs._nvjpeg2k import NvJpeg2kContext
@@ -15,8 +16,9 @@ class NvJpeg2k(Codec):
 
     codec_id = "nvjpeg2k"
 
-    def __init__(self) -> None:
+    def __init__(self, non_blocking=True) -> None:
         self._ctx = NvJpeg2kContext()
+        self._stream = Stream(non_blocking=non_blocking)
 
     def encode(self, buf: BufferLike) -> None:
         """Encode data in `buf`.
@@ -53,7 +55,7 @@ class NvJpeg2k(Codec):
             Decoded data. Can be any object supporting the new-style
             buffer protocol.
         """
-        return nvjpeg2k_decode(buf, out=_flat(out))  # type: ignore
+        return nvjpeg2k_decode(buf, out=_flat(out), ctx=self._ctx, stream=self._stream)  # type: ignore
 
 
 # from imagecodecs.numcodecs import _flat
