@@ -60,9 +60,9 @@ cdef int cudaEventInterprocess = 0x04  # Event is suitable for interprocess use.
 
 cdef class NvJpeg2kContext:
 
-    cdef nvjpeg2kHandle_t handle = NULL
-    cdef nvjpeg2kDecodeState_t decode_state = NULL
-    cdef nvjpeg2kStream_t jpeg2k_stream = NULL
+    cdef nvjpeg2kHandle_t handle
+    cdef nvjpeg2kDecodeState_t decode_state
+    cdef nvjpeg2kStream_t jpeg2k_stream
 
     def __init__(self):
         # device and host allocators
