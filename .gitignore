@@ -11,6 +11,7 @@ docs/build/**
 htmlcov/**
 *.egg-info/**
 .idea
+*.pyc
 
 **/tests/data
 nvjpeg2k_numcodecs/_version.py
