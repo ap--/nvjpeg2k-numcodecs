@@ -4,7 +4,7 @@ This is a playground for getting nvjpeg2k decoding into numcodecs to
 benchmark if tile loading for deeplearning can be significantly sped
 up when decoding directly on the GPU.
 
-## Notes
+## :construction: Notes :construction:
 
 Currently, this is a bit of a playground for testing feasibility and
 establishing good benchmarks. But feel free to open issues in the

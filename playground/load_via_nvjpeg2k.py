@@ -48,3 +48,5 @@ m = fs.get_mapper("s0/0")
 # cupy backed array ??
 arr = zarr.Array(store=m, read_only=True, meta_array=meta_array)
 print(arr.info)
+
+arr[:, :240, :240]
