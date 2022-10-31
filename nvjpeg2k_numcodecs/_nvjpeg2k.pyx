@@ -1,7 +1,7 @@
 # distutils: language = c++
 
 import cupy
-from cupy.cuda.stream import Stream
+from cupy.cuda.stream import Stream as Stream
 
 from libc.stdint cimport intptr_t
 from libcpp.vector cimport vector
