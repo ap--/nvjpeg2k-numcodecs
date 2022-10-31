@@ -19,6 +19,7 @@ class NvJpeg2k(Codec):
     codec_id = "nvjpeg2k"
 
     def __init__(self, blocking: bool = False) -> None:
+        self.blocking = bool(blocking)
         self._ctx = NvJpeg2kContext()
         self._stream = Stream(non_blocking=not blocking)
 
