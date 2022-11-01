@@ -29,7 +29,7 @@ elif sys.argv[1] == "gpu":
     z = json.loads(old_zarray)
 
     numcodecs.register_codec(NvJpeg2k)
-    z["compressor"] = {"id": "nvjpeg2k", "blocking": True}
+    z["compressor"] = {"id": "nvjpeg2k", "blocking": False}
     z["chunks"] = [3, 240, 240]
     z["shape"] = [z["shape"][2], *z["shape"][:2]]
 
