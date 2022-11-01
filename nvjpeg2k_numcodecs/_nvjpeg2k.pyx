@@ -36,17 +36,19 @@ cdef int host_free(void *p):
     return <int>cudaFreeHost(p)
 
 
-cdef raise_if_nvjpeg2k_error(status: nvjpeg2k.nvjpeg2kStatus_t, name: str = " "):
+cdef void raise_if_nvjpeg2k_error(status: nvjpeg2k.nvjpeg2kStatus_t, name: str = " ") nogil except+:
     if status != nvjpeg2k.NVJPEG2K_STATUS_SUCCESS:
-        msg = _status_error_msg[status]
-        raise RuntimeError(f"nvJPEG2000 status error:{name}{msg!r}")
+        with gil:
+            msg = _status_error_msg[status]
+            raise RuntimeError(f"nvJPEG2000 status error:{name}{msg!r}")
 
 
-cdef raise_if_cuda_error(cuda_error: nvjpeg2k.cudaError_t, name: str = " "):
+cdef void raise_if_cuda_error(cuda_error: nvjpeg2k.cudaError_t, name: str = " ") nogil except+:
     if cuda_error != 0:
         # msg = _cuda_error_msg[cuda_error]
-        msg = int(cuda_error)
-        raise RuntimeError(f"nvJPEG2000 cuda error:{name}{msg!r}")
+        with gil:
+            msg = int(cuda_error)
+            raise RuntimeError(f"nvJPEG2000 cuda error:{name}{msg!r}")
 
 
 cdef int cudaStreamDefault = 0x00  # Default stream flag
@@ -108,11 +110,33 @@ cdef class NvJpeg2kContext:
             raise_if_nvjpeg2k_error(status)
 
 
+cdef class NvJpeg2kDecodeParams:
+
+    cdef nvjpeg2kDecodeParams_t ptr
+
+    def __init__(self, rgb_output: int = 0):
+        status = nvjpeg2kDecodeParamsCreate(&self.ptr)
+        raise_if_nvjpeg2k_error(status)
+
+        status = nvjpeg2kDecodeParamsSetRGBOutput(self.ptr, rgb_output)
+        try:
+            raise_if_nvjpeg2k_error(status)
+        except RuntimeError:
+            self.__dealloc__()
+            raise
+
+    def __dealloc__(self):
+        if self.ptr != NULL:
+            status = nvjpeg2kDecodeParamsDestroy(self.ptr)
+            raise_if_nvjpeg2k_error(status, "paramsDestroy")
+
+
 def nvjpeg2k_decode(
     buf,
     out=None,
-    rgb_output: int = 0,
+    *,
     ctx: NvJpeg2kContext = None,
+    decode_params: NvJpeg2kDecodeParams = None,
     stream: Stream = None,
 ):
     cdef nvjpeg2kStatus_t status
@@ -120,8 +144,6 @@ def nvjpeg2k_decode(
 
     cdef unsigned char* buffer
     cdef size_t length
-
-    cdef nvjpeg2kDecodeParams_t decode_params = NULL
 
     cdef int bytes_per_element = 1
     cdef nvjpeg2kImage_t output_image
@@ -140,18 +162,15 @@ def nvjpeg2k_decode(
     if ctx is None:
         ctx = NvJpeg2kContext()
 
+    if decode_params is None:
+        decode_params = NvJpeg2kDecodeParams()
+
     if stream is None:
         stream = Stream(non_blocking=True)
     cuda_stream = <cudaStream_t> <intptr_t> stream.ptr
 
-    cudaStreamSynchronize(cuda_stream)
-
-    try:
-        status = nvjpeg2kDecodeParamsCreate(&decode_params)
-        raise_if_nvjpeg2k_error(status)
-
-        status = nvjpeg2kDecodeParamsSetRGBOutput(decode_params, rgb_output)
-        raise_if_nvjpeg2k_error(status)
+    with nogil:
+        cudaStreamSynchronize(cuda_stream)
 
         status = nvjpeg2kStreamParse(
             ctx.handle,
@@ -192,41 +211,38 @@ def nvjpeg2k_decode(
         else:
             raise RuntimeError(f"nvJPEG2000 precision not supported: '{image_comp_info[0].precision!r}'")
 
-        # shapes
-        shape = (image_info.num_components, image_info.image_height, image_info.image_width)
-        dtype = f"u{bytes_per_element}"
-
-        # >>> generate output array
-        if out is None:
-            out = cupy.empty(shape, dtype=dtype, order="C")
-        elif isinstance(out, cupy.ndarray):
-            if out.shape != shape:
-                raise ValueError("out has incorrect shape")
-        else:
-            raise NotImplementedError("todo: not implemented yet...")
-
         decode_output_pitch.resize(image_info.num_components)
         output_image.pitch_in_bytes = decode_output_pitch.data()
         output_image.num_components = image_info.num_components
 
-        for c in range(image_info.num_components):
-            output_image.pixel_data[c] = <void *> <intptr_t> out[c, :, :].data.ptr
-            output_image.pitch_in_bytes[c] = image_info.image_width * bytes_per_element
+    # shapes
+    shape = (image_info.num_components, image_info.image_height, image_info.image_width)
+    dtype = f"u{bytes_per_element}"
+
+    # >>> generate output array
+    if out is None:
+        out = cupy.empty(shape, dtype=dtype, order="C")
+    elif isinstance(out, cupy.ndarray):
+        if out.shape != shape:
+            raise ValueError("out has incorrect shape")
+    else:
+        raise NotImplementedError("todo: not implemented yet...")
+
+    for c in range(image_info.num_components):
+        output_image.pixel_data[c] = <void *> <intptr_t> out[c, :, :].data.ptr
+        output_image.pitch_in_bytes[c] = image_info.image_width * bytes_per_element
+
+    with nogil:
 
         # decode the image
         status = nvjpeg2kDecodeImage(
             ctx.handle,
             ctx.decode_state,
             ctx.jpeg2k_stream,
-            decode_params,
+            decode_params.ptr,
             &output_image,
             cuda_stream,
         )
         raise_if_nvjpeg2k_error(status, "decodeImage")
-
-    finally:
-        if decode_params != NULL:
-            status = nvjpeg2kDecodeParamsDestroy(decode_params)
-            raise_if_nvjpeg2k_error(status, "paramsDestroy")
 
     return out

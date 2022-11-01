@@ -6,6 +6,7 @@ import numpy as np
 from numcodecs.abc import Codec
 
 from nvjpeg2k_numcodecs._nvjpeg2k import NvJpeg2kContext
+from nvjpeg2k_numcodecs._nvjpeg2k import NvJpeg2kDecodeParams
 from nvjpeg2k_numcodecs._nvjpeg2k import Stream
 from nvjpeg2k_numcodecs._nvjpeg2k import nvjpeg2k_decode
 
@@ -21,6 +22,7 @@ class NvJpeg2k(Codec):
     def __init__(self, blocking: bool = False) -> None:
         self.blocking = bool(blocking)
         self._ctx = NvJpeg2kContext()
+        self._decode_params = NvJpeg2kDecodeParams()
         self._stream = Stream(non_blocking=not blocking)
 
     def encode(self, buf: BufferLike) -> None:
@@ -59,7 +61,11 @@ class NvJpeg2k(Codec):
             buffer protocol.
         """
         return nvjpeg2k_decode(  # type: ignore
-            buf, out=_flat(out), ctx=self._ctx, stream=self._stream
+            buf,
+            out=_flat(out),
+            ctx=self._ctx,
+            decode_params=self._decode_params,
+            stream=self._stream,
         )
 
 

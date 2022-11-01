@@ -115,7 +115,7 @@ cdef extern from "cuda_runtime_api.h":
 
     cdef cudaError_t cudaStreamCreateWithFlags(cudaStream_t *pStream, unsigned int flags)
     cdef cudaError_t cudaStreamDestroy(cudaStream_t stream)
-    cdef cudaError_t cudaStreamSynchronize(cudaStream_t stream)
+    cdef cudaError_t cudaStreamSynchronize(cudaStream_t stream) nogil
 
     cdef cudaError_t cudaEventCreateWithFlags(cudaEvent_t *event, unsigned int flags)
     cdef cudaError_t cudaEventDestroy(cudaEvent_t event)
@@ -291,18 +291,18 @@ cdef extern from "nvjpeg2k.h":
         int save_metadata,
         int save_stream,
         nvjpeg2kStream *stream_handle
-    )
+    ) nogil
 
     cdef nvjpeg2kStatus_t nvjpeg2kStreamGetImageInfo(
         nvjpeg2kStream_t stream_handle,
         nvjpeg2kImageInfo_t* image_info
-    )
+    ) nogil
 
     cdef nvjpeg2kStatus_t nvjpeg2kStreamGetImageComponentInfo(
         nvjpeg2kStream_t stream_handle,
         nvjpeg2kImageComponentInfo_t* component_info,
         uint32_t component_id
-    )
+    ) nogil
 
     cdef nvjpeg2kStatus_t nvjpeg2kStreamGetResolutionsInTile(
         nvjpeg2kStream_t stream_handle,
@@ -367,7 +367,7 @@ cdef extern from "nvjpeg2k.h":
         nvjpeg2kDecodeParams_t decode_params,
         nvjpeg2kImage_t* decode_output,
         cudaStream_t stream
-    )
+    ) nogil
 
     cdef nvjpeg2kStatus_t nvjpeg2kDecodeTile(
         nvjpeg2kHandle_t handle,
