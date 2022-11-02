@@ -1,3 +1,4 @@
+from collections import deque
 from typing import Optional
 from typing import Union
 
@@ -19,11 +20,14 @@ class NvJpeg2k(Codec):
 
     codec_id = "nvjpeg2k"
 
-    def __init__(self, blocking: bool = False) -> None:
+    def __init__(self, blocking: bool = False, num_cuda_streams: int = 8) -> None:
         self.blocking = bool(blocking)
+        self.num_cuda_streams = int(num_cuda_streams)
         self._ctx = NvJpeg2kContext()
         self._decode_params = NvJpeg2kDecodeParams()
-        self._stream = Stream(non_blocking=not blocking)
+        self._streams = deque([
+            Stream(non_blocking=not blocking) for _ in range(self.num_cuda_streams)
+        ])
 
     def encode(self, buf: BufferLike) -> None:
         """Encode data in `buf`.
@@ -60,12 +64,13 @@ class NvJpeg2k(Codec):
             Decoded data. Can be any object supporting the new-style
             buffer protocol.
         """
+        self._streams.rotate(1)
         return nvjpeg2k_decode(  # type: ignore
             buf,
             out=_flat(out),
             ctx=self._ctx,
             decode_params=self._decode_params,
-            stream=self._stream,
+            stream=self._streams[0],
         )
 
 
