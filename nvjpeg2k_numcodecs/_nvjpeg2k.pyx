@@ -166,7 +166,7 @@ def nvjpeg2k_decode(
         decode_params = NvJpeg2kDecodeParams()
 
     if stream is None:
-        stream = Stream(non_blocking=True)
+        stream = Stream(non_blocking=False)
     cuda_stream = <cudaStream_t> <intptr_t> stream.ptr
 
     with nogil:
